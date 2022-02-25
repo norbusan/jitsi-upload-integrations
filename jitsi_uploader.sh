@@ -45,6 +45,8 @@ fi
 [[ "$TOKEN" == "null" ]] && TOKEN=""
 [[ -z "$UPLOAD_TYPE" ]] && UPLOAD_TYPE=$(cat $METADATA_JSON | jq -r ".upload_credentials.service_name")
 [[ "$UPLOAD_TYPE" == "null" ]] && UPLOAD_TYPE=""
+[[ "$UPLOAD_TYPE" == "nextcloud" ]] && NEXTCLOUD_URL=$(cat $METADATA_JSON | jq -r ".upload_credentials.service_url")
+[[ "$NEXTCLOUD_URL" == "null" ]] && NEXTCLOUD_URL=""
 URL=$(cat $METADATA_JSON | jq -r ".meeting_url")
 [[ "$URL" == "null" ]] && URL=""
 URL_NAME="${URL##*/}"
@@ -54,8 +56,8 @@ if [[ -z "$UPLOAD_TYPE" &&  -f $BIN_PATH/jitsi-recording-service.sh && -x $BIN_P
 fi
 
 case "$UPLOAD_TYPE" in
-  "dropbox")
-    UPLOAD_FUNC="dropbox_upload"
+  "dropbox|nextcloud")
+    UPLOAD_FUNC="dropbox_nextcloud_upload $UPLOAD_TYPE"
     ;;
   "custom")
     UPLOAD_FUNC="custom_upload"
@@ -74,20 +76,27 @@ function custom_upload {
 
 #processes direct with uploads
 # $1 - path to directory for upload
-function dropbox_upload {
-    echo "Upload method: dropbox"
+function dropbox_nextcloud_upload {
+    METHOD=$1
+    echo "Upload method: $METHOD"
     #final return defaults to success
     FRET=0;
     if [[ -z $TOKEN ]]; then
         echo "No upload credentials found, skipping upload..."
         exit 5
     fi
-    UPLOAD_BIN="$BIN_PATH/dropbox_uploader.sh"
+    if [[ $METHOD == "nextcloud" ]] && [[ -z $NEXTCLOUD_URL ]]; then
+        echo "Missing Nextcloud URL, skipping upload..."
+	exit 5
+    else
+        export NEXTCLOUD_URL
+    fi
+    UPLOAD_BIN="$BIN_PATH/${METHOD}_uploader.sh"
     export OAUTH_ACCESS_TOKEN="$TOKEN"
     export OAUTH_REFRESH_TOKEN="$REFRESH_TOKEN"
     export OAUTH_CLIENT_ID="$APP_KEY"
 
-    for i in $1/*; do
+    for i in $2/*; do
       b=$(basename "$i")
       if [[ "$b" == "metadata.json" ]]; then
         #skip, metadata
